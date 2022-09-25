@@ -60,13 +60,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "example-ffmpeg-camera"
-version = "0.1.0"
-dependencies = [
- "ffmpeg-next",
-]
-
-[[package]]
 name = "ffmpeg-next"
 version = "5.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -210,6 +203,13 @@ name = "regex-syntax"
 version = "0.6.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
+
+[[package]]
+name = "rust-video-playground"
+version = "0.1.0"
+dependencies = [
+ "ffmpeg-next",
+]
 
 [[package]]
 name = "rustc-hash"
