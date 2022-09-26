@@ -2,51 +2,72 @@ use std::path::Path;
 
 use ffmpeg_next as ffmpeg;
 
+use crate::mac_bindings::*;
+
+fn get_ffmpeg_input_device_backend() -> Result<ffmpeg::Format, ffmpeg::Error> {
+    ffmpeg::device::input::video()
+        .find(|format| format.name() == "avfoundation")
+        .ok_or(ffmpeg::Error::Unknown)
+}
+
+fn print_ffmpeg_input_device_backends(selected: &str) {
+    for d in ffmpeg::device::input::video() {
+        let name = d.name();
+        if name == selected {
+            println!("[*] ffmpeg {name}");
+        } else {
+            println!("[ ] ffmpeg {name}");
+        }
+    }
+}
+
+fn print_camera_devices(backend: &ffmpeg::Format) {
+    if backend.name() != "avfoundation" {
+        unimplemented!("only implemented for Mac OS AVFoundation");
+    }
+
+    let devices = AVCaptureDevice::devicesWithMediaType(AVMediaTypeVideo);
+    for (index, device) in devices.iter().enumerate() {
+        println!("[{index}] {:?}", device.localizedName());
+    }
+}
+
+fn choose_camera_input(
+    backend: &ffmpeg::Format,
+) -> Result<ffmpeg::format::context::Input, ffmpeg::Error> {
+    if backend.name() != "avfoundation" {
+        unimplemented!("only implemented for Mac OS AVFoundation");
+    }
+
+    let path0 = &Path::new("default");
+    let options = ffmpeg::dict!(
+        "video_device_index" => "0",
+        "framerate" => "30",
+        "pixel_format" => "bgr0", // 0rgb or bgr0 or others
+    );
+    let context = ffmpeg::format::open_with(path0, backend, options)?;
+    Ok(context.input())
+}
+
 pub fn load_camera_stream() -> Result<CameraStream, Box<dyn std::error::Error>> {
     ffmpeg::init()?;
     ffmpeg::device::register_all();
 
-    let input_format = ffmpeg::device::input::video()
-        .find(|format| format.name() == "avfoundation")
-        .unwrap();
+    let backend = get_ffmpeg_input_device_backend()?;
+    print_ffmpeg_input_device_backends(backend.name());
+    print_camera_devices(&backend);
+    let mut input = choose_camera_input(&backend)?;
 
-    let path0 = &Path::new("default");
-    let options = ffmpeg::dict!(
-        "list_devices" => "false",
-        // "video_device_index" => "0",
-        "framerate" => "30",
-        "pixel_format" => "bgr0", // 0rgb or bgr0 or others // TODO this value is wrong when OBS camera is used
-    );
-
-    // let input_context = ffmpeg::format::open(path0, &input_format)?;
-    let input_context = ffmpeg::format::open_with(path0, &input_format, options)?;
-    let mut input = input_context.input();
     let stream = input.stream_mut(0).unwrap();
-
     let context_decoder = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
     let decoder = context_decoder.decoder().video()?;
 
-    let scaler = ffmpeg::software::scaling::Context::get(
-        decoder.format(),
-        decoder.width(),
-        decoder.height(),
-        decoder.format(),
-        decoder.width(),
-        decoder.height(),
-        ffmpeg::software::scaling::Flags::BILINEAR,
-    )?;
-
-    Ok(CameraStream {
-        input,
-        decoder,
-        scaler,
-    })
+    Ok(CameraStream { input, decoder })
 }
 
 pub struct CameraStream {
     input: ffmpeg::format::context::Input,
     decoder: ffmpeg::decoder::Video,
-    scaler: ffmpeg::software::scaling::Context,
 }
 
 pub type VideoFrame = ffmpeg::util::frame::Video;
@@ -63,13 +84,17 @@ impl CameraStream {
 
         let mut decoded_frame = VideoFrame::empty();
         decoder.receive_frame(&mut decoded_frame)?;
-        let frame = self.scale_frame(&decoded_frame)?;
-        Ok(frame)
-    }
 
-    fn scale_frame(&mut self, input: &VideoFrame) -> Result<VideoFrame, ffmpeg::Error> {
-        let mut output = VideoFrame::empty();
-        self.scaler.run(input, &mut output)?;
-        Ok(output)
+        let output = ffmpeg::format::Pixel::RGBA;
+        let mut converter = decoder.converter(output)?;
+        let mut frame = VideoFrame::new(output, decoded_frame.width(), decoded_frame.height());
+
+        // When I used RGB32 I got unexpected results. This safes me from doing this error again.
+        assert_eq!(converter.output().format, output);
+        assert_eq!(frame.format(), output);
+
+        converter.run(&decoded_frame, &mut frame)?;
+
+        Ok(frame)
     }
 }

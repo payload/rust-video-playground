@@ -7,3 +7,5 @@ pub use camera::{load_camera_stream, CameraStream, VideoFrame};
 
 mod ppm;
 pub use ppm::write_video_frame_as_ppm;
+
+mod mac_bindings;
