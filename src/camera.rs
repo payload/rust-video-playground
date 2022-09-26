@@ -43,6 +43,7 @@ fn choose_camera_input(
     let options = ffmpeg::dict!(
         "video_device_index" => "0",
         "framerate" => "30",
+        "video_size" => "640,360",
         "pixel_format" => "bgr0", // 0rgb or bgr0 or others
     );
     let context = ffmpeg::format::open_with(path0, backend, options)?;

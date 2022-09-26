@@ -95,7 +95,7 @@ impl eframe::App for CameraApp {
                 self.load_camera_stream();
             }
             for tex in self.get_camera_frame_tex() {
-                ui.image(tex, tex.size_vec2() / 4.0);
+                ui.image(tex, tex.size_vec2());
             }
         });
     }
